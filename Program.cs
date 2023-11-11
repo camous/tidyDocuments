@@ -45,7 +45,7 @@ namespace tidyDocuments
                         DateFormat = rule["date_format"] != null ? rule["date_format"].Value<string>() : null,
                         DateSkip = rule["date_skip"] != null ? rule["date_skip"].Value<Int32>() : 0,
                         DateFormatTryParse = rule["date_format_tryparse"] != null ? rule["date_format_tryparse"].Value<string>() : null,
-                        CultureInfo = rule["culture_info"] != null ? rule["date_format_tryparse"].Value<string>() : defaultCultureInfo
+                        CultureInfo = rule["culture_info"] != null ? rule["culture_info"].Value<string>() : defaultCultureInfo
                     };
 
                     if (!Directory.Exists(newRule.DestinationPath))
@@ -128,7 +128,7 @@ namespace tidyDocuments
                             {
                                 var dateValue = dateReplacementPatterns.Aggregate(dateMatch.Value, (current, value) => Regex.Replace(current, value.Key, value.Value, RegexOptions.IgnoreCase));
 
-                                if (DateTime.TryParseExact(dateValue, rule.DateFormatTryParse, new System.Globalization.CultureInfo(rule.CultureInfo), DateTimeStyles.None, out DateTime parsedDate))
+                                if (DateTime.TryParseExact(dateValue, rule.DateFormatTryParse, new CultureInfo(rule.CultureInfo), DateTimeStyles.None, out DateTime parsedDate))
                                     dateTimes.Add(parsedDate);
                             }
 
