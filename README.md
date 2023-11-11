@@ -21,3 +21,9 @@ Anatomy of a detection rule
   ...
 }
 ```
+
+Examples
+* left : ruleset for detecting account `00-123456` from `CrawfordTech Bank` with date pattern `MMM dd, yyyy`
+* middle : actual pdf
+* right : output of `tidyDocument`, detecting both keyword, and suggest copy or move to rule expected destination
+![](docs/overview.png)
