@@ -1,0 +1,10 @@
+{
+  "my rule name": {
+    "description": "description to help",
+    "keywords": [ "keyword_in_pdf#1", "keyword_in_pdf#2" ],
+    "destination_path": ".",
+    "filename_pattern": "{date}_file_naming_convention",
+    "date_format": "[0-3][0-9]/[0-1][0-9]/20[0-3][0-9]",
+    "date_format_tryparse": "dd/MM/yyyy"
+  }
+}
