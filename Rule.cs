@@ -16,5 +16,7 @@ namespace tidyDocuments
         public List<string> Keywords { get; set; }
         public string FilenamePattern { get; set; }
         public string CultureInfo { get; set; }
+
+        public List<string> FoundKeywords { get; set; } = new List<string>();
     }
 }

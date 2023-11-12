@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Microsoft.Extensions.Configuration;
 using System.Globalization;
+using System.Data;
 
 namespace tidyDocuments
 {
@@ -74,163 +75,164 @@ namespace tidyDocuments
             foreach (var file in Directory.GetFiles(pdf_input_folder, "*.pdf"))
             {
                 var fileinfo = new FileInfo(file);
-                
                 var document = String.Empty;
-                using (var docReader = DocLib.Instance.GetDocReader(file, new PageDimensions()))
+
+                try
                 {
-                    
-                    for (var i = 0; i < docReader.GetPageCount(); i++)
+                    using (var docReader = DocLib.Instance.GetDocReader(file, new PageDimensions()))
                     {
-                        using (var pageReader = docReader.GetPageReader(i))
+
+                        for (var i = 0; i < docReader.GetPageCount(); i++)
                         {
-                            document += pageReader.GetText() + Environment.NewLine;
+                            using (var pageReader = docReader.GetPageReader(i))
+                            {
+                                document += pageReader.GetText() + Environment.NewLine;
+                            }
                         }
+                        File.WriteAllText(Path.Join(transcriptions_folder, fileinfo.Name + ".txt"), document);
                     }
-                    System.IO.File.WriteAllText(Path.Join(transcriptions_folder, fileinfo.Name + ".txt"), document);
+                }catch(Docnet.Core.Exceptions.DocnetLoadDocumentException ex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"Could not open pdf file '{file}'");
+                    Console.ResetColor();
+                    continue;
                 }
+                
 
                 Trace.TraceInformation(file);
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine(file);
                 Console.ResetColor();
 
-                var oneMatch = false;
+                rules.Values.ToList().ForEach(x => x.FoundKeywords.Clear());
                 foreach (var rule in rules.Values)
                 {
-                    var found_match = true;
-                    var found_keywords = new List<string>();
-                    foreach(var keyword in rule.Keywords)
+                    foreach (var keyword in rule.Keywords)
                     {
                         if (Regex.IsMatch(document, keyword, RegexOptions.IgnoreCase))
-                        {
-                            found_keywords.Add(keyword);
-                            oneMatch = true;
-
-                        } else
-                        {
-                            found_match = false;
-                        }
+                            rule.FoundKeywords.Add(keyword);
                     }
+                }
 
-                    if (found_keywords.Count > 0)
-                        Console.WriteLine($"\t{rule.Name} : [{String.Join(", ", found_keywords.ToArray())}]");
+                var match = rules.Values.Where(x=>x.Keywords.Count == x.FoundKeywords.Count).OrderByDescending(x => x.FoundKeywords.Count).FirstOrDefault();
+                
+                if (match != null)
+                {
+                    Console.WriteLine($"\t{match.Name} : [{String.Join(", ", match.FoundKeywords.ToArray())}]");
 
-                    if (found_match)
+                    DateTime documentDate = DateTime.Today;
+                    List<DateTime> dateTimes = new List<DateTime>();
+
+                    if (match.DateFormat != null)
                     {
-                        DateTime documentDate = DateTime.Today;
-                        List<DateTime> dateTimes = new List<DateTime>();
+                        var dateMatches = Regex.Matches(document, match.DateFormat, RegexOptions.IgnoreCase);
 
-                        if (rule.DateFormat != null)
+                        foreach (var dateMatch in dateMatches.ToList())
                         {
-                            var dateMatches = Regex.Matches(document, rule.DateFormat, RegexOptions.IgnoreCase);
+                            var dateValue = dateReplacementPatterns.Aggregate(dateMatch.Value, (current, value) => Regex.Replace(current, value.Key, value.Value, RegexOptions.IgnoreCase));
 
-                            foreach (var dateMatch in dateMatches.ToList())
-                            {
-                                var dateValue = dateReplacementPatterns.Aggregate(dateMatch.Value, (current, value) => Regex.Replace(current, value.Key, value.Value, RegexOptions.IgnoreCase));
-
-                                if (DateTime.TryParseExact(dateValue, rule.DateFormatTryParse, new CultureInfo(rule.CultureInfo), DateTimeStyles.None, out DateTime parsedDate))
-                                    dateTimes.Add(parsedDate);
-                            }
-
-                            if (dateTimes.Count == 0)
-                            {
-                                Trace.TraceInformation("\tCan't find any date references, use today");
-                                Console.ForegroundColor = ConsoleColor.Red;
-                                Console.WriteLine($"No date found in document with format {rule.DateFormat}");
-                                Console.ResetColor();
-
-                            }
-                            else
-                            {
-                                Trace.TraceInformation("Found : " + String.Join(", ", dateTimes.OrderByDescending(x => x).ToArray()));
-                                if(rule.DateSkip != 0 && rule.DateSkip < dateTimes.Count)
-                                {
-                                    Trace.TraceInformation("Skip date from newest " + rule.DateSkip.ToString());
-                                    documentDate = dateTimes.OrderByDescending(x => x).Skip(rule.DateSkip).Max();
-                                }
-                                else 
-                                    documentDate = dateTimes.Max();
-                            }
+                            if (DateTime.TryParseExact(dateValue, match.DateFormatTryParse, new CultureInfo(match.CultureInfo), DateTimeStyles.None, out DateTime parsedDate))
+                                dateTimes.Add(parsedDate);
                         }
 
-                        // we assume date of the document is the 
-                        string filename = rule.FilenamePattern.Replace("{date}", documentDate.ToString("yyyyMMdd")) + fileinfo.Extension;
-                        string filepath = Path.Combine(rule.DestinationPath, filename);
-                        var archive_filename = Path.Join(archives_folder,Guid.NewGuid() + "_" + fileinfo.Name + "_" + filename);
-
-                        Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine($"copy or move {file} to {filepath}");
-                        Console.ResetColor();
-
-                        if (File.Exists(filepath))
+                        if (dateTimes.Count == 0)
                         {
-                            Console.ForegroundColor = ConsoleColor.Yellow;
-                            Console.WriteLine($"Destination file '{filepath}' already exists. Open file ? [y/N]");
+                            Trace.TraceInformation("\tCan't find any date references, use today");
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine($"No date found in document with format {match.DateFormat}");
                             Console.ResetColor();
 
-                            if (!dryRun)
-                            {
-                                var key = Console.ReadKey();
-                                if (key.Key == ConsoleKey.Y)
-                                    System.Diagnostics.Process.Start("explorer", file);
-
-                                Console.WriteLine($"delete source file ? [y/N] ({file})");
-                                var deleteKey = Console.ReadKey();
-                                if (deleteKey.Key == ConsoleKey.Y)
-                                {
-                                    File.Delete(file);
-                                }
-                            }
                         }
                         else
                         {
-                            if (!dryRun)
+                            Trace.TraceInformation("Found : " + String.Join(", ", dateTimes.OrderByDescending(x => x).ToArray()));
+                            if(match.DateSkip != 0 && match.DateSkip < dateTimes.Count)
                             {
-                                Console.WriteLine("copy/MOVE/skip [c/M/s]");
-                                var key = Console.ReadKey();
+                                Trace.TraceInformation("Skip date from newest " + match.DateSkip.ToString());
+                                documentDate = dateTimes.OrderByDescending(x => x).Skip(match.DateSkip).Max();
+                            }
+                            else 
+                                documentDate = dateTimes.Max();
+                        }
+                    }
 
-                                logs.Add(new JObject
+                    // we assume date of the document is the 
+                    string filename = match.FilenamePattern.Replace("{date}", documentDate.ToString("yyyyMMdd")) + fileinfo.Extension;
+                    string filepath = Path.Combine(match.DestinationPath, filename);
+                    var archive_filename = Path.Join(archives_folder,Guid.NewGuid() + "_" + fileinfo.Name + "_" + filename);
+
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"copy or move {file} to {filepath}");
+                    Console.ResetColor();
+
+                    if (File.Exists(filepath))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"Destination file '{filepath}' already exists. Open file ? [y/N]");
+                        Console.ResetColor();
+
+                        if (!dryRun)
+                        {
+                            var key = Console.ReadKey();
+                            if (key.Key == ConsoleKey.Y)
+                                System.Diagnostics.Process.Start("explorer", file);
+
+                            Console.WriteLine($"delete source file ? [y/N] ({file})");
+                            var deleteKey = Console.ReadKey();
+                            if (deleteKey.Key == ConsoleKey.Y)
+                            {
+                                File.Delete(file);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (!dryRun)
+                        {
+                            Console.WriteLine("copy/MOVE/skip [c/M/s]");
+                            var key = Console.ReadKey();
+
+                            logs.Add(new JObject
+                            {
+                                ["timestamp"] = DateTime.Now,
+                                ["original"] = file,
+                                ["destination"] = filepath,
+                                ["archive"] = archive_filename,
+                                ["keywords"] = JArray.FromObject(match.Keywords),
+                                ["rulename"] = match.Name,
+                                ["dates"] = JArray.FromObject(dateTimes.Distinct().OrderByDescending(x=>x)),
+                                ["action"] = key.Key.ToString()
+                            });
+                            System.IO.File.WriteAllText("logs.json", JsonConvert.SerializeObject(new JObject { ["logs"] = logs }, Formatting.Indented));
+
+                            try
+                            {
+                                switch (key.Key)
                                 {
-                                    ["timestamp"] = DateTime.Now,
-                                    ["original"] = file,
-                                    ["destination"] = filepath,
-                                    ["archive"] = archive_filename,
-                                    ["keywords"] = JArray.FromObject(rule.Keywords),
-                                    ["rulename"] = rule.Name,
-                                    ["dates"] = JArray.FromObject(dateTimes.Distinct().OrderByDescending(x=>x)),
-                                    ["action"] = key.Key.ToString()
-                                });
-                                System.IO.File.WriteAllText("logs.json", JsonConvert.SerializeObject(new JObject { ["logs"] = logs }, Formatting.Indented));
+                                    case ConsoleKey.Enter:
+                                    case ConsoleKey.M:
+                                        File.Copy(file, archive_filename);
+                                        File.Move(file, filepath);
+                                        break;
 
-                                try
-                                {
-                                    switch (key.Key)
-                                    {
-                                        case ConsoleKey.Enter:
-                                        case ConsoleKey.M:
-                                            File.Copy(file, archive_filename);
-                                            File.Move(file, filepath);
-                                            break;
-
-                                        case ConsoleKey.C:
-                                            File.Copy(file, archive_filename);
-                                            File.Copy(file, filepath);
-                                            break;
-                                        default:
-                                            Console.WriteLine("skipped");
-                                            break;
-                                    }
+                                    case ConsoleKey.C:
+                                        File.Copy(file, archive_filename);
+                                        File.Copy(file, filepath);
+                                        break;
+                                    default:
+                                        Console.WriteLine("skipped");
+                                        break;
                                 }
-                                catch (Exception exception)
-                                {
-                                    Console.WriteLine(exception.Message);
-                                }
+                            }
+                            catch (Exception exception)
+                            {
+                                Console.WriteLine(exception.Message);
                             }
                         }
                     }
                 }
-
-                if(!oneMatch)
+                else 
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine("no matched keywords found");
