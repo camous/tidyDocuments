@@ -142,11 +142,11 @@ namespace tidyDocuments
                             }
                             else
                             {
-                                Trace.TraceInformation("Found : " + String.Join(", ", dateTimes.Distinct().OrderByDescending(x => x).ToArray()));
+                                Trace.TraceInformation("Found : " + String.Join(", ", dateTimes.OrderByDescending(x => x).ToArray()));
                                 if(rule.DateSkip != 0 && rule.DateSkip < dateTimes.Count)
                                 {
                                     Trace.TraceInformation("Skip date from newest " + rule.DateSkip.ToString());
-                                    documentDate = dateTimes.Distinct().OrderByDescending(x => x).Skip(rule.DateSkip).Max();
+                                    documentDate = dateTimes.OrderByDescending(x => x).Skip(rule.DateSkip).Max();
                                 }
                                 else 
                                     documentDate = dateTimes.Max();
