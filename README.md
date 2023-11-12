@@ -16,7 +16,8 @@ Anatomy of a detection rule
     "filename_pattern" : "{date}_bankABC_monthly report", // output file name pattern {date} will be replaced by extracted date. extract date info are carried with below settings.
     "date_format" : "[0-3][0-9]/[0-1][0-9]/20[0-3][0-9]", // date extraction following regex pattern
     "date_format_tryparse" : "dd/MM/yyyy", // dates detected with `date_format` will then be parsed with those datetime params (tryparseextact) (https://learn.microsoft.com/en-us/dotnet/standard/base-types/standard-date-and-time-format-strings)
-    "date_skip": 1, // (optional) first parsed date has no interest ? skip it and take the second one
+    "date_skip": 1, // (optional) first parsed date has no interest ? skip it and take the second one,
+    "culture_info" : "en-US" // (optional) override default culture define in appsettings.json
   }
   ...
 }
